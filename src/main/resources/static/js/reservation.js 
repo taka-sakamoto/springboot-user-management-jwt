@@ -1,0 +1,18 @@
+function editReservation(id) {
+    fetch(`/api/reservations/${id}`)
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById("facility").value = data.facilityId;
+        document.getElementById("userName").value = data.userName;
+
+        // ISO形式に変換してセット
+        document.getElementById("startDateTime").value =
+            data.startDateTime.replace(" ", "T").slice(0, 16);
+
+        document.getElementById("endDateTime").value =
+            data.endDateTime.replace(" ", "T").slice(0, 16);
+
+        // 編集フォームを表示
+        document.querySelector(".edit-container").style.display = "block";
+    });
+}

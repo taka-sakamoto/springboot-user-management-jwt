@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>予約作成</title>
+    <style>
+        body { font-family: sans-serif; padding: 40px; background: #f5f5f5; }
+        h1 { margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        select, input { width: 250px; padding: 8px; font-size: 14px; }
+        button { padding: 10px 20px; font-size: 14px; cursor: pointer; }
+        #result { margin-top: 20px; padding: 10px; background: #fff; 
+                border: 1px solid #ddd; width: 350px; }
+        a { display: inline-block; margin-top: 20px; }
+
+        .radio-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .radio-row label {
+            display: flex;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* appearance: none で消えたラジオボタンを自作する */
+        .radio-row input[type = "radio"] {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+
+            width: 18px;
+            height: 18px;
+            border: 2px solid #555;
+            border-radius: 50%;
+            margin: 0 4px 0 0;
+            position: relative;
+            cursor: pointer;
+        }
+
+        /* チェックされた時の黒丸 */
+        .radio-row input[type="radio"]:checked::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 12px;   /* 好きな大きさにできる */
+            height: 12px;
+            background: #555;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+
+    </style>
+</head>
+<body>
+
+<h1>予約作成</h1>
+
+<!-- 会員用：ユーザー選択 -->
+<div class="radio-row">
+    <label>予約者区分：</label><br>
+    <label>
+        <input type="radio" name="userType" value="member" checked> 会員
+        <input type="radio" name="userType" value="guest"> 非会員
+    </label>
+</div>
+
+<!-- 会員用：ユーザー選択 -->
+<div class="form-group" id="memberArea">
+    <label>会員ユーザー：</label><br>
+    <select id="userSelect"></select>
+</div>
+
+<!-- 非会員用：名前入力 -->
+<div class="form-group" id="guestArea" style="display:none;">
+    <label>非会員氏名：</label><br>
+    <input type="text" id="guestName" placeholder="お名前を入力">
+</div>
+
+<div class="form-group">
+    <label>施設：</label><br>
+    <select id="facilitySelect"></select>
+</div>
+
+<div class="form-group">
+    <label>開始日時：</label><br>
+    <input type="datetime-local" id="startTime">
+</div>
+
+<div class="form-group">
+    <label>終了日時：</label><br>
+    <input type="datetime-local" id="endTime">
+</div>
+
+<button onclick="createReservation()">予約する</button>
+
+<div id="result"></div>
+
+<a href="/">← トップへ戻る</a>
+
+
+
+<script>
+// ----------------------
+// ユーザー一覧を読み込む
+// ----------------------
+function loadUsers() {
+    fetch("/api/users")
+    .then(res => res.json())
+    .then(users => {
+        const select = document.getElementById("userSelect");
+        users.forEach(u => {
+            const option = document.createElement("option");
+            option.value = u.id;
+            option.textContent = `${u.id}: ${u.name}`;
+            select.appendChild(option);
+        });
+    });
+}
+
+// ----------------------
+// 施設一覧を読み込む
+// ----------------------
+function loadFacilities() {
+    fetch("/api/facilities")
+        .then(res => res.json())
+        .then(facilities => {
+            const select = document.getElementById("facilitySelect");
+            facilities.forEach(f => {
+                const option = document.createElement("option");
+                option.value = f.id;
+                option.textContent = `${f.id}: ${f.name}`;
+                select.appendChild(option);
+            });
+        });
+}
+
+// --------------------------
+// 予約作成
+//---------------------------
+function createReservation() {
+    const userType = document.querySelector('input[name="userType"]:checked').value;
+
+    let params = new URLSearchParams();
+
+    if (userType == "member") {
+        const userId = document.getElementById("userSelect").value;
+        params.append("userId", userId);
+    } else {
+        const userName = document.getElementById("guestName").value;
+        params.append("userName", userName);
+    }
+
+    const facilityId = document.getElementById("facilitySelect").value;
+    const start = document.getElementById("startTime").value + ":00";
+    const end = document.getElementById("endTime").value + ":00";
+
+    params.append("facilityId", facilityId);
+    params.append("start", start);
+    params.append("end", end);
+
+    fetch(`/api/reservations?${params.toString()}`, {
+        method: "POST"
+    })
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById("result").innerHTML =
+            `<strong>予約成功！</strong><br>
+            予約ID： ${data.id}<br>
+            会員ID： ${data.userId || "（非会員）"}<br>
+            非会員名： ${data.userName || "（会員予約）"}<br>
+            施設ID： ${data.facility.id}<br>
+            開始： ${data.startTime}<br>
+            終了： ${data.endTime}<br>`;
+    })
+    .catch(err => {
+        console.error(err);
+        document.getElementById("result").innerHTML = "エラーが発生しました";
+    });
+}
+
+// ---------------------
+// UI 切り替え用 JS
+// ---------------------
+document.querySelectorAll('input[name="userType"]').forEach(radio => {
+    radio.addEventListener("change", () => {
+        const type = document.querySelector('input[name="userType"]:checked').value;
+
+        if (type === "member") {
+            document.getElementById("memberArea").style.display = "block";
+            document.getElementById("guestArea").style.display = "none";
+        } else {
+            document.getElementById("memberArea").style.display = "none";
+            document.getElementById("guestArea").style.display = "block";
+        }
+    });
+});
+
+// 初期ロード
+loadUsers();
+loadFacilities();
+
+</script>
+
+</body>
+</html>

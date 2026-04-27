@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>予約一覧</title>
+    <!-- reservation.cssを読み込む -->
+    <link rel="stylesheet" href="/css/reservation.css">
+
+    <style>
+        body { font-family: sans-serif; padding: 40px; background: #f5f5f5; }
+        h1 { margin-bottom: 20px; }
+        table { border-collapse: collapse; width: 900px; background: white; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background: #eee; }
+        button { padding: 5px 10px; }
+        a { display: inline-block; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<h1>予約一覧</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>ユーザー</th>
+            <th>施設</th>
+            <th>開始</th>
+            <th>終了</th>
+            <th>編集</th>
+            <th>削除</th>
+        </tr>
+    </thead>
+    <tbody id="reservationTableBody">
+    </tbody>
+</table>
+
+<div class="edit-container">
+    <h2>予約編集</h2>
+
+    <div id="editForm" style="display: none;">
+        <input type="hidden" id="editId">
+
+        <div>
+            <label>予約種別：</label>
+            <span id="editUserType"></span>
+        </div>
+
+        <div>
+            <label>利用者名：</label>
+            <input type="text" id="editUserName" disabled>
+        </div>
+
+        <div>
+            <label>施設：</label>
+            <select id="editFacility"> ... </select>
+        </div>
+
+        <div>
+            <label>開始：</label>
+            <input type="datetime-local" id="editStart">
+        </div>
+
+        <div>
+            <label>終了：</label>
+            <input type="datetime-local" id="editEnd">
+        </div>
+
+        <button onclick="updateReservation()">更新</button>
+    </div>
+
+</div>
+
+<a href="/">← トップへ戻る</a>
+
+<script>
+
+// 施設一覧を読み込む
+function loadFacilities() {
+    fetch("/api/facilities")
+    .then(res => res.json())
+    .then(facilities => {
+        const select = document.getElementById("editFacility");
+        select.innerHTML = "";
+        facilities.forEach(f => {
+            const option = document.createElement("option");
+            option.value = f.id;
+            option.textContent = f.name;
+            select.appendChild(option);
+        });
+    });
+}
+
+// 予約一覧
+function loadReservations() {
+    fetch("/api/reservations")
+        .then(res => res.json())
+        .then(reservations => {
+            const tbody = document.getElementById("reservationTableBody");
+            tbody.innerHTML = "";
+
+            reservations.forEach(r => {
+
+                // *利用者名の判定ロジック
+                let userLabel = "不明";
+                if (r.userId) {
+                    userLabel = `会員ID: ${r.userId}`;
+                } else if (r.userName) {
+                    userLabel = r.userName;
+                }
+
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${r.id}</td>
+                    <td>${userLabel}</td>
+                    <td>${r.facility ? r.facility.name : "不明"}</td>
+                    <td>${formatDateTime(r.startTime)}</td>
+                    <td>${formatDateTime(r.endTime)}</td>
+                    <td><button onClick="editReservation(${r.id})">編集</button></td>
+                    <td><button onClick="deleteReservation(${r.id})">削除</button></td>
+                `;
+                tbody.appendChild(row);
+            });
+        });
+}
+
+// 編集ボタンを押したとき
+function editReservation(id) {
+    fetch(`/api/reservations/${id}`)
+        .then(res => res.json())
+        .then(r => {
+
+            // 予約ID
+            document.getElementById("editId").value = r.id;
+
+            // 施設
+            document.getElementById("editFacility").value = r.facility.id;
+
+            // 日時
+            document.getElementById("editStart").value = r.startTime.replace(" ", "T");
+            document.getElementById("editEnd").value = r.endTime.replace(" ", "T");
+
+            // --- 会員／非会員の判定 ---
+            if (r.userId) {
+                // 会員予約
+                document.getElementById("editUserType").textContent = "会員予約";
+
+                // *今は user.name が返ってこないので userIdを表示する
+                document.getElementById("editUserName").value = `会員ID: ${r.userId}`;
+            } else {
+                // 非会員予約
+                document.getElementById("editUserType").textContent = "非会員予約";
+                document.getElementById("editUserName").value = r.userName || "(名前未設定)";
+            }
+
+            // 編集フォームを表示
+            document.getElementById("editForm").style.display = "block";
+        });
+}
+
+// 更新処理（PUT)
+function updateReservation() {
+    const id = document.getElementById("editId").value;
+    const facilityId = document.getElementById("editFacility").value;
+
+    const start = document.getElementById("editStart").value + ":00";
+    const end = document.getElementById("editEnd").value + ":00";
+
+    const params = new URLSearchParams({
+        userId: 1, // まずは固定で動作確認用
+        facilityId: facilityId,
+        start: start,
+        end: end
+    });
+
+    fetch(`/api/reservations/${id}?` + params.toString(), {
+        method: "PUT"
+    })
+    .then(res => {
+        if (!res.ok) throw new Error("更新エラー");
+        return res.json()
+    })
+    .then(() => {
+        alert("更新しました");
+        loadReservations();
+    })
+    .catch(() => alert("更新に失敗しました"));
+}
+
+function deleteReservation(id) {
+    if (!confirm("本当に削除しますか？")) return;
+
+    fetch(`/api/reservations/${id}`, {
+        method: "DELETE"
+    })
+    .then(() => {
+        alert("削除しました")
+        loadReservations(); // 再読み込み
+    });
+}
+
+function formatDateTime(dt) {
+    if (!dt) return "";
+
+    const d = new Date(dt);
+
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+
+    const hour = String(d.getHours()).padStart(2, "0");
+    const minute = String(d.getMinutes()).padStart(2, "0");
+
+    return `${year}/${month}/${day} ${hour}:${minute}`;
+}
+
+// ページ読み込み時に両方呼ぶ
+loadFacilities();
+loadReservations();
+</script>
+
+</body>
+</html>
